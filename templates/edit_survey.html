@@ -1,0 +1,467 @@
+{% extends "base.html" %}
+{% block title %}编辑问卷 - {{ survey.title }}{% endblock %}
+{% block content %}
+<div class="edit-page">
+    <div class="page-header">
+        <h2>编辑问卷</h2>
+        <a href="{{ url_for('survey.dashboard') }}" class="btn btn-secondary">返回</a>
+    </div>
+
+    <!-- Survey Settings -->
+    <div class="card">
+        <h3>问卷设置</h3>
+        <form method="POST" action="{{ url_for('survey.update_settings', survey_id=survey._id) }}">
+            <div class="form-group">
+                <label>标题</label>
+                <input type="text" name="title" value="{{ survey.title }}" required>
+            </div>
+            <div class="form-group">
+                <label>说明</label>
+                <textarea name="description" rows="3">{{ survey.description }}</textarea>
+            </div>
+            <div class="form-group">
+                <label>截止时间</label>
+                <input type="datetime-local" name="deadline"
+                    value="{{ survey.deadline.strftime('%Y-%m-%dT%H:%M') if survey.deadline else '' }}">
+            </div>
+            <div class="form-group">
+                <label>最大回复数（留空表示不限）</label>
+                <input type="number" name="max_responses" min="1"
+                    value="{{ survey.max_responses if survey.max_responses else '' }}"
+                    placeholder="不限制">
+            </div>
+            <div class="form-group checkbox-group">
+                <label>
+                    <input type="checkbox" name="allow_anonymous"
+                        {{ 'checked' if survey.allow_anonymous }}>
+                    允许匿名填写
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">保存设置</button>
+            </div>
+        </form>
+
+        <div class="survey-status-bar">
+            <span>状态：<strong class="status-badge status-{{ survey.status }}">
+                {% if survey.status == 'draft' %}草稿{% elif survey.status == 'published' %}已发布{% elif survey.status == 'closed' %}已关闭{% endif %}
+            </strong></span>
+            <span>链接：<code>/s/{{ survey.survey_key }}</code></span>
+            {% if survey.max_responses %}
+            <span>剩余名额：{{ survey.max_responses - response_count }}/{{ survey.max_responses }}</span>
+            {% endif %}
+        </div>
+        <div class="form-actions">
+            {% if survey.status == 'draft' %}
+                <form method="POST" action="{{ url_for('survey.publish', survey_id=survey._id) }}" style="display:inline">
+                    <button type="submit" class="btn btn-success">发布问卷</button>
+                </form>
+            {% elif survey.status == 'published' %}
+                <form method="POST" action="{{ url_for('survey.close', survey_id=survey._id) }}" style="display:inline">
+                    <button type="submit" class="btn btn-danger">关闭问卷</button>
+                </form>
+                <a href="{{ url_for('fill.fill', survey_key=survey.survey_key) }}" class="btn btn-outline" target="_blank">预览</a>
+            {% elif survey.status == 'closed' %}
+                <form method="POST" action="{{ url_for('survey.publish', survey_id=survey._id) }}" style="display:inline">
+                    <button type="submit" class="btn btn-success">重新发布</button>
+                </form>
+            {% endif %}
+            <a href="{{ url_for('stats.survey_stats', survey_id=survey._id) }}" class="btn btn-sm">查看统计</a>
+        </div>
+    </div>
+
+    <!-- Questions List -->
+    <div class="card">
+        <h3>题目列表（共 {{ questions|length }} 题）</h3>
+
+        {% if questions %}
+            {% for q in questions %}
+            <div class="question-card" id="question-{{ q._id }}">
+                <div class="question-header">
+                    <span class="question-order">Q{{ q.order }}</span>
+                    <span class="question-type-badge type-{{ q.type }}">
+                        {% if q.type == 'single_choice' %}单选
+                        {% elif q.type == 'multiple_choice' %}多选
+                        {% elif q.type == 'text_fill' %}文本填空
+                        {% elif q.type == 'number_fill' %}数字填空
+                        {% endif %}
+                    </span>
+                    <span class="question-title">{{ q.title }}</span>
+                    {% if q.required %}<span class="required-badge">必答</span>{% endif %}
+                    <div class="question-actions">
+                        <button type="button" class="btn btn-sm" onclick="toggleEdit('{{ q._id }}')">编辑</button>
+                        <form method="POST" action="{{ url_for('survey.move_question', survey_id=survey._id, question_id=q._id) }}" style="display:inline">
+                            <input type="hidden" name="direction" value="up">
+                            <button type="submit" class="btn btn-sm" {{ 'disabled' if loop.first }}>↑</button>
+                        </form>
+                        <form method="POST" action="{{ url_for('survey.move_question', survey_id=survey._id, question_id=q._id) }}" style="display:inline">
+                            <input type="hidden" name="direction" value="down">
+                            <button type="submit" class="btn btn-sm" {{ 'disabled' if loop.last }}>↓</button>
+                        </form>
+                        <form method="POST" action="{{ url_for('survey.delete_question', survey_id=survey._id, question_id=q._id) }}" style="display:inline"
+                              onsubmit="return confirm('确定删除此题？')">
+                            <button type="submit" class="btn btn-sm btn-danger">删除</button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Question Summary -->
+                <div class="question-summary">
+                    {% if q.type in ['single_choice', 'multiple_choice'] %}
+                        <p>选项：{{ q.options|join('、') }}</p>
+                        {% if q.type == 'multiple_choice' and q.validation %}
+                            <p>选择限制：
+                                {% if q.validation.get('min_select') %}至少{{ q.validation.min_select }}个{% endif %}
+                                {% if q.validation.get('max_select') %}最多{{ q.validation.max_select }}个{% endif %}
+                            </p>
+                        {% endif %}
+                    {% elif q.type == 'text_fill' %}
+                        {% if q.validation %}
+                            <p>字数限制：
+                                {% if q.validation.get('min_length') %}最少{{ q.validation.min_length }}字{% endif %}
+                                {% if q.validation.get('max_length') %}最多{{ q.validation.max_length }}字{% endif %}
+                            </p>
+                        {% endif %}
+                    {% elif q.type == 'number_fill' %}
+                        {% if q.validation %}
+                            <p>数字限制：
+                                {% if q.validation.get('must_be_integer') %}必须整数{% endif %}
+                                {% if q.validation.get('min_value') is not none %}最小{{ q.validation.min_value }}{% endif %}
+                                {% if q.validation.get('max_value') is not none %}最大{{ q.validation.max_value }}{% endif %}
+                            </p>
+                        {% endif %}
+                    {% endif %}
+                    {% if q.jump_rules %}
+                        <p>跳转规则：
+                            {% for rule in q.jump_rules %}
+                                {% set target_q = namespace(title='未知') %}
+                                {% for aq in all_questions %}
+                                    {% if aq.id == rule.target_question_id %}
+                                        {% set target_q.title = 'Q' ~ aq.order ~ ' ' ~ aq.title %}
+                                    {% endif %}
+                                {% endfor %}
+                                <span class="jump-rule-tag">
+                                    {{ rule.condition_type }} {{ rule.condition_value }} → {{ target_q.title }}
+                                </span>
+                            {% endfor %}
+                        </p>
+                    {% endif %}
+                </div>
+
+                <!-- Edit Form (hidden by default) -->
+                <div class="question-edit-form" id="edit-{{ q._id }}" style="display:none">
+                    <form method="POST" action="{{ url_for('survey.update_question', survey_id=survey._id, question_id=q._id) }}">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>题目类型</label>
+                                <select name="type" class="q-type-select" onchange="onTypeChange(this, '{{ q._id }}')">
+                                    <option value="single_choice" {{ 'selected' if q.type == 'single_choice' }}>单选题</option>
+                                    <option value="multiple_choice" {{ 'selected' if q.type == 'multiple_choice' }}>多选题</option>
+                                    <option value="text_fill" {{ 'selected' if q.type == 'text_fill' }}>文本填空</option>
+                                    <option value="number_fill" {{ 'selected' if q.type == 'number_fill' }}>数字填空</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>题目标题</label>
+                                <input type="text" name="title" value="{{ q.title }}" required>
+                            </div>
+                        </div>
+                        <div class="form-group checkbox-group">
+                            <label><input type="checkbox" name="required" {{ 'checked' if q.required }}> 必答题</label>
+                        </div>
+
+                        <!-- Options (for choice types) -->
+                        <div class="options-section" id="options-section-{{ q._id }}"
+                             style="{{ '' if q.type in ['single_choice', 'multiple_choice'] else 'display:none' }}">
+                            <label>选项</label>
+                            <div class="options-list" id="options-list-{{ q._id }}">
+                                {% for opt in q.options %}
+                                <div class="option-row">
+                                    <input type="text" name="options[]" value="{{ opt }}" placeholder="选项内容">
+                                    <button type="button" class="btn btn-sm btn-danger" onclick="this.parentElement.remove()">×</button>
+                                </div>
+                                {% endfor %}
+                                {% if not q.options %}
+                                <div class="option-row">
+                                    <input type="text" name="options[]" placeholder="选项内容">
+                                    <button type="button" class="btn btn-sm btn-danger" onclick="this.parentElement.remove()">×</button>
+                                </div>
+                                {% endif %}
+                            </div>
+                            <button type="button" class="btn btn-sm" onclick="addOption('{{ q._id }}')">+ 添加选项</button>
+                        </div>
+
+                        <!-- Validation for multiple_choice -->
+                        <div class="validation-section" id="mc-validation-{{ q._id }}"
+                             style="{{ '' if q.type == 'multiple_choice' else 'display:none' }}">
+                            <label>选择数量限制</label>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>最少选择</label>
+                                    <input type="number" name="min_select" min="0"
+                                        value="{{ q.validation.get('min_select', '') if q.validation.get('min_select') is not none else '' }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>最多选择</label>
+                                    <input type="number" name="max_select" min="0"
+                                        value="{{ q.validation.get('max_select', '') if q.validation.get('max_select') is not none else '' }}">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Validation for text_fill -->
+                        <div class="validation-section" id="text-validation-{{ q._id }}"
+                             style="{{ '' if q.type == 'text_fill' else 'display:none' }}">
+                            <label>字数限制</label>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>最少字数</label>
+                                    <input type="number" name="min_length" min="0"
+                                        value="{{ q.validation.get('min_length', '') if q.validation.get('min_length') is not none else '' }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>最多字数</label>
+                                    <input type="number" name="max_length" min="0"
+                                        value="{{ q.validation.get('max_length', '') if q.validation.get('max_length') is not none else '' }}">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Validation for number_fill -->
+                        <div class="validation-section" id="num-validation-{{ q._id }}"
+                             style="{{ '' if q.type == 'number_fill' else 'display:none' }}">
+                            <label>数值限制</label>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>最小值</label>
+                                    <input type="number" name="min_value" step="any"
+                                        value="{{ q.validation.get('min_value', '') if q.validation.get('min_value') is not none else '' }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>最大值</label>
+                                    <input type="number" name="max_value" step="any"
+                                        value="{{ q.validation.get('max_value', '') if q.validation.get('max_value') is not none else '' }}">
+                                </div>
+                            </div>
+                            <div class="form-group checkbox-group">
+                                <label>
+                                    <input type="checkbox" name="must_be_integer"
+                                        {{ 'checked' if q.validation.get('must_be_integer') }}>
+                                    必须为整数
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Jump Rules -->
+                        <div class="jump-rules-section">
+                            <label>跳转规则</label>
+                            <div class="jump-rules-list" id="jump-rules-{{ q._id }}">
+                                {% for rule in q.jump_rules %}
+                                <div class="jump-rule-row">
+                                    <span>如果回答</span>
+                                    <select name="jump_condition_type[]">
+                                        <option value="equals" {{ 'selected' if rule.condition_type == 'equals' }}>等于</option>
+                                        <option value="contains" {{ 'selected' if rule.condition_type == 'contains' }}>包含</option>
+                                        <option value="greater_than" {{ 'selected' if rule.condition_type == 'greater_than' }}>大于</option>
+                                        <option value="less_than" {{ 'selected' if rule.condition_type == 'less_than' }}>小于</option>
+                                        <option value="between" {{ 'selected' if rule.condition_type == 'between' }}>介于</option>
+                                    </select>
+                                    <input type="text" name="jump_condition_value[]" value="{{ rule.condition_value }}" placeholder="条件值">
+                                    <span>跳转到</span>
+                                    <select name="jump_target[]">
+                                        {% for aq in all_questions %}
+                                            {% if aq.id != q._id|string %}
+                                            <option value="{{ aq.id }}" {{ 'selected' if aq.id == rule.target_question_id }}>
+                                                Q{{ aq.order }}: {{ aq.title[:20] }}
+                                            </option>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </select>
+                                    <button type="button" class="btn btn-sm btn-danger" onclick="this.parentElement.remove()">×</button>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <button type="button" class="btn btn-sm" onclick="addJumpRule('{{ q._id }}')">+ 添加跳转规则</button>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">保存修改</button>
+                            <button type="button" class="btn btn-secondary" onclick="toggleEdit('{{ q._id }}')">取消</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <p class="empty-hint">暂无题目，请在下方添加</p>
+        {% endif %}
+    </div>
+
+    <!-- Add Question Form -->
+    <div class="card">
+        <h3>添加题目</h3>
+        <form method="POST" action="{{ url_for('survey.add_question', survey_id=survey._id) }}" id="add-question-form">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>题目类型</label>
+                    <select name="type" id="new-q-type" onchange="onNewTypeChange(this)">
+                        <option value="single_choice">单选题</option>
+                        <option value="multiple_choice">多选题</option>
+                        <option value="text_fill">文本填空</option>
+                        <option value="number_fill">数字填空</option>
+                    </select>
+                </div>
+                <div class="form-group flex-grow">
+                    <label>题目标题</label>
+                    <input type="text" name="title" required placeholder="请输入题目">
+                </div>
+            </div>
+            <div class="form-group checkbox-group">
+                <label><input type="checkbox" name="required"> 必答题</label>
+            </div>
+
+            <!-- Options for new question -->
+            <div class="options-section" id="new-options-section">
+                <label>选项</label>
+                <div class="options-list" id="new-options-list">
+                    <div class="option-row">
+                        <input type="text" name="options[]" placeholder="选项1">
+                        <button type="button" class="btn btn-sm btn-danger" onclick="this.parentElement.remove()">×</button>
+                    </div>
+                    <div class="option-row">
+                        <input type="text" name="options[]" placeholder="选项2">
+                        <button type="button" class="btn btn-sm btn-danger" onclick="this.parentElement.remove()">×</button>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-sm" onclick="addNewOption()">+ 添加选项</button>
+            </div>
+
+            <!-- Validation for new multiple choice -->
+            <div class="validation-section" id="new-mc-validation" style="display:none">
+                <label>选择数量限制</label>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>最少选择</label>
+                        <input type="number" name="min_select" min="0" placeholder="不限">
+                    </div>
+                    <div class="form-group">
+                        <label>最多选择</label>
+                        <input type="number" name="max_select" min="0" placeholder="不限">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Validation for new text fill -->
+            <div class="validation-section" id="new-text-validation" style="display:none">
+                <label>字数限制</label>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>最少字数</label>
+                        <input type="number" name="min_length" min="0" placeholder="不限">
+                    </div>
+                    <div class="form-group">
+                        <label>最多字数</label>
+                        <input type="number" name="max_length" min="0" placeholder="不限">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Validation for new number fill -->
+            <div class="validation-section" id="new-num-validation" style="display:none">
+                <label>数值限制</label>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>最小值</label>
+                        <input type="number" name="min_value" step="any" placeholder="不限">
+                    </div>
+                    <div class="form-group">
+                        <label>最大值</label>
+                        <input type="number" name="max_value" step="any" placeholder="不限">
+                    </div>
+                </div>
+                <div class="form-group checkbox-group">
+                    <label><input type="checkbox" name="must_be_integer"> 必须为整数</label>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">添加题目</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function toggleEdit(qid) {
+    const el = document.getElementById('edit-' + qid);
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function onTypeChange(select, qid) {
+    const type = select.value;
+    document.getElementById('options-section-' + qid).style.display =
+        (type === 'single_choice' || type === 'multiple_choice') ? 'block' : 'none';
+    document.getElementById('mc-validation-' + qid).style.display =
+        type === 'multiple_choice' ? 'block' : 'none';
+    document.getElementById('text-validation-' + qid).style.display =
+        type === 'text_fill' ? 'block' : 'none';
+    document.getElementById('num-validation-' + qid).style.display =
+        type === 'number_fill' ? 'block' : 'none';
+}
+
+function onNewTypeChange(select) {
+    const type = select.value;
+    document.getElementById('new-options-section').style.display =
+        (type === 'single_choice' || type === 'multiple_choice') ? 'block' : 'none';
+    document.getElementById('new-mc-validation').style.display =
+        type === 'multiple_choice' ? 'block' : 'none';
+    document.getElementById('new-text-validation').style.display =
+        type === 'text_fill' ? 'block' : 'none';
+    document.getElementById('new-num-validation').style.display =
+        type === 'number_fill' ? 'block' : 'none';
+}
+
+function addOption(qid) {
+    const list = document.getElementById('options-list-' + qid);
+    const row = document.createElement('div');
+    row.className = 'option-row';
+    row.innerHTML = '<input type="text" name="options[]" placeholder="选项内容">' +
+        '<button type="button" class="btn btn-sm btn-danger" onclick="this.parentElement.remove()">×</button>';
+    list.appendChild(row);
+}
+
+function addNewOption() {
+    const list = document.getElementById('new-options-list');
+    const row = document.createElement('div');
+    row.className = 'option-row';
+    row.innerHTML = '<input type="text" name="options[]" placeholder="选项内容">' +
+        '<button type="button" class="btn btn-sm btn-danger" onclick="this.parentElement.remove()">×</button>';
+    list.appendChild(row);
+}
+
+function addJumpRule(qid) {
+    const list = document.getElementById('jump-rules-' + qid);
+    const row = document.createElement('div');
+    row.className = 'jump-rule-row';
+    row.innerHTML = `
+        <span>如果回答</span>
+        <select name="jump_condition_type[]">
+            <option value="equals">等于</option>
+            <option value="contains">包含</option>
+            <option value="greater_than">大于</option>
+            <option value="less_than">小于</option>
+            <option value="between">介于(用逗号分隔)</option>
+        </select>
+        <input type="text" name="jump_condition_value[]" placeholder="条件值">
+        <span>跳转到</span>
+        <select name="jump_target[]">
+            {% for aq in all_questions %}
+            <option value="{{ aq.id }}">Q{{ aq.order }}: {{ aq.title[:20] }}</option>
+            {% endfor %}
+        </select>
+        <button type="button" class="btn btn-sm btn-danger" onclick="this.parentElement.remove()">×</button>
+    `;
+    list.appendChild(row);
+}
+</script>
+{% endblock %}

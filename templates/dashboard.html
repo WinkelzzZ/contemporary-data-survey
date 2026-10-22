@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}我的问卷 - 问卷系统{% endblock %}
+{% block content %}
+<div class="dashboard">
+    <div class="page-header">
+        <h2>我的问卷</h2>
+        <a href="{{ url_for('survey.create') }}" class="btn btn-primary">创建问卷</a>
+    </div>
+
+    {% if surveys %}
+        <div class="survey-list">
+            {% for s in surveys %}
+            <div class="survey-card">
+                <div class="survey-card-header">
+                    <h3>{{ s.title }}</h3>
+                    <span class="status-badge status-{{ s.status }}">
+                        {% if s.status == 'draft' %}草稿
+                        {% elif s.status == 'published' %}已发布
+                        {% elif s.status == 'closed' %}已关闭
+                        {% endif %}
+                    </span>
+                </div>
+                <p class="survey-desc">{{ s.description or '暂无说明' }}</p>
+                <div class="survey-meta">
+                    <span>题目：{{ s.question_count }}</span>
+                    <span>回收：{{ s.response_count }} 份</span>
+                    {% if s.max_responses %}
+                    <span>剩余：{{ s.max_responses - s.response_count }}/{{ s.max_responses }}</span>
+                    {% endif %}
+                    <span>创建：{{ s.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+                    {% if s.deadline %}
+                    <span>截止：{{ s.deadline.strftime('%Y-%m-%d %H:%M') }}</span>
+                    {% endif %}
+                </div>
+                <div class="survey-actions">
+                    <a href="{{ url_for('survey.edit', survey_id=s._id) }}" class="btn btn-sm">编辑</a>
+                    <a href="{{ url_for('stats.survey_stats', survey_id=s._id) }}" class="btn btn-sm">统计</a>
+                    {% if s.status == 'published' %}
+                    <a href="{{ url_for('fill.fill', survey_key=s.survey_key) }}" class="btn btn-sm btn-outline" target="_blank">填写链接</a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <p>还没有创建问卷</p>
+            <a href="{{ url_for('survey.create') }}" class="btn btn-primary">创建第一个问卷</a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}创建问卷 - 问卷系统{% endblock %}
+{% block content %}
+<div class="form-page">
+    <h2>创建问卷</h2>
+    <form method="POST" action="{{ url_for('survey.create') }}">
+        <div class="form-group">
+            <label>问卷标题 *</label>
+            <input type="text" name="title" required placeholder="请输入问卷标题" autofocus>
+        </div>
+        <div class="form-group">
+            <label>问卷说明</label>
+            <textarea name="description" rows="4" placeholder="请输入问卷说明（选填）"></textarea>
+        </div>
+        <div class="form-group">
+            <label>截止时间（选填）</label>
+            <input type="datetime-local" name="deadline">
+        </div>
+        <div class="form-group">
+            <label>最大回复数（选填，留空表示不限）</label>
+            <input type="number" name="max_responses" min="1" placeholder="不限制">
+        </div>
+        <div class="form-group checkbox-group">
+            <label>
+                <input type="checkbox" name="allow_anonymous">
+                允许匿名填写（不记录填写者身份）
+            </label>
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">创建</button>
+            <a href="{{ url_for('survey.dashboard') }}" class="btn btn-secondary">取消</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

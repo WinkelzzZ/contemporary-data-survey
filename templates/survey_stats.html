@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}统计结果 - {{ survey.title }}{% endblock %}
+{% block content %}
+<div class="stats-page">
+    <div class="page-header">
+        <h2>统计结果：{{ survey.title }}</h2>
+        <div>
+            <span class="stat-total">共 {{ total_responses }} 份回复</span>
+            <a href="{{ url_for('survey.edit', survey_id=survey._id) }}" class="btn btn-secondary">返回编辑</a>
+        </div>
+    </div>
+
+    {% if total_responses == 0 %}
+        <div class="empty-state">
+            <p>暂无回复数据</p>
+        </div>
+    {% else %}
+        {% if time_stats.has_data %}
+        <div class="card stat-card">
+            <div class="stat-header">
+                <span class="q-title">答题时长统计</span>
+                <span class="stat-answered">{{ time_stats.count }}/{{ total_responses }} 份有记录</span>
+            </div>
+            <div class="number-summary">
+                <div class="number-stat">
+                    <span class="stat-label">平均用时</span>
+                    <span class="stat-value">{{ time_stats.average_display }}</span>
+                </div>
+                <div class="number-stat">
+                    <span class="stat-label">最短用时</span>
+                    <span class="stat-value">{{ time_stats.min_display }}</span>
+                </div>
+                <div class="number-stat">
+                    <span class="stat-label">最长用时</span>
+                    <span class="stat-value">{{ time_stats.max_display }}</span>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% for s in stats %}
+        <div class="card stat-card">
+            <div class="stat-header">
+                <span class="q-number">Q{{ s.order }}.</span>
+                <span class="q-title">{{ s.title }}</span>
+                <span class="question-type-badge type-{{ s.type }}">
+                    {% if s.type == 'single_choice' %}单选
+                    {% elif s.type == 'multiple_choice' %}多选
+                    {% elif s.type == 'text_fill' %}文本填空
+                    {% elif s.type == 'number_fill' %}数字填空
+                    {% endif %}
+                </span>
+                <span class="stat-answered">{{ s.answered }}/{{ s.total }} 人回答</span>
+            </div>
+
+            {% if s.type == 'single_choice' %}
+                <table class="stats-table">
+                    <thead>
+                        <tr><th>选项</th><th>人数</th><th>占比</th><th>分布</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for opt, count in s.option_counts.items() %}
+                        <tr>
+                            <td>{{ opt }}</td>
+                            <td>{{ count }}</td>
+                            <td>{{ '%.1f'|format(count / s.answered * 100) if s.answered > 0 else '0.0' }}%</td>
+                            <td>
+                                <div class="bar-container">
+                                    <div class="bar" style="width: {{ (count / s.answered * 100) if s.answered > 0 else 0 }}%"></div>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+
+            {% elif s.type == 'multiple_choice' %}
+                <table class="stats-table">
+                    <thead>
+                        <tr><th>选项</th><th>选择次数</th><th>占比</th><th>分布</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for opt, count in s.option_counts.items() %}
+                        <tr>
+                            <td>{{ opt }}</td>
+                            <td>{{ count }}</td>
+                            <td>{{ '%.1f'|format(count / s.answered * 100) if s.answered > 0 else '0.0' }}%</td>
+                            <td>
+                                <div class="bar-container">
+                                    <div class="bar" style="width: {{ (count / s.answered * 100) if s.answered > 0 else 0 }}%"></div>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+
+            {% elif s.type == 'text_fill' %}
+                <div class="text-responses">
+                    {% if s.texts %}
+                        {% for t in s.texts %}
+                        <div class="text-response-item">{{ t }}</div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="empty-hint">暂无文本回复</p>
+                    {% endif %}
+                </div>
+
+            {% elif s.type == 'number_fill' %}
+                <div class="number-summary">
+                    <div class="number-stat">
+                        <span class="stat-label">平均值</span>
+                        <span class="stat-value">{{ '%.2f'|format(s.average) }}</span>
+                    </div>
+                    <div class="number-stat">
+                        <span class="stat-label">最小值</span>
+                        <span class="stat-value">{{ s.min }}</span>
+                    </div>
+                    <div class="number-stat">
+                        <span class="stat-label">最大值</span>
+                        <span class="stat-value">{{ s.max }}</span>
+                    </div>
+                </div>
+                <div class="text-responses">
+                    <h4>所有填写内容：</h4>
+                    {% for n in s.numbers %}
+                    <span class="number-tag">{{ n }}</span>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    {% endif %}
+</div>
+{% endblock %}

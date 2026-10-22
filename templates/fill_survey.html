@@ -1,0 +1,314 @@
+{% extends "base.html" %}
+{% block title %}{{ survey.title }}{% endblock %}
+{% block content %}
+<div class="fill-page">
+    <div class="survey-header">
+        <h2>{{ survey.title }}</h2>
+        {% if survey.description %}
+        <p class="survey-description">{{ survey.description }}</p>
+        {% endif %}
+    </div>
+
+    <form method="POST" action="{{ url_for('fill.submit', survey_key=survey.survey_key) }}" id="survey-form" onsubmit="return validateForm()">
+        {% for q in questions %}
+        <div class="question-block" id="question-{{ q.id }}" data-qid="{{ q.id }}" data-order="{{ q.order }}" data-type="{{ q.type }}">
+            <div class="question-title-row">
+                <span class="q-number">{{ q.order }}.</span>
+                <span class="q-title">{{ q.title }}</span>
+                {% if q.required %}<span class="required-star">*</span>{% endif %}
+            </div>
+
+            {% if q.type == 'single_choice' %}
+                <div class="options-group">
+                    {% for opt in q.options %}
+                    <label class="option-label">
+                        <input type="radio" name="q_{{ q.id }}" value="{{ opt }}"
+                            onchange="evaluateJumps()">
+                        {{ opt }}
+                    </label>
+                    {% endfor %}
+                </div>
+
+            {% elif q.type == 'multiple_choice' %}
+                <div class="options-group">
+                    {% for opt in q.options %}
+                    <label class="option-label">
+                        <input type="checkbox" name="q_{{ q.id }}[]" value="{{ opt }}"
+                            onchange="evaluateJumps()">
+                        {{ opt }}
+                    </label>
+                    {% endfor %}
+                </div>
+                {% if q.validation %}
+                <div class="validation-hint">
+                    {% if q.validation.get('min_select') %}至少选 {{ q.validation.min_select }} 项{% endif %}
+                    {% if q.validation.get('max_select') %}最多选 {{ q.validation.max_select }} 项{% endif %}
+                </div>
+                {% endif %}
+
+            {% elif q.type == 'text_fill' %}
+                <div class="fill-group">
+                    <input type="text" name="q_{{ q.id }}" placeholder="请输入"
+                        oninput="evaluateJumps()">
+                </div>
+                {% if q.validation %}
+                <div class="validation-hint">
+                    {% if q.validation.get('min_length') %}最少 {{ q.validation.min_length }} 字{% endif %}
+                    {% if q.validation.get('max_length') %}最多 {{ q.validation.max_length }} 字{% endif %}
+                </div>
+                {% endif %}
+
+            {% elif q.type == 'number_fill' %}
+                <div class="fill-group">
+                    <input type="number" name="q_{{ q.id }}" placeholder="请输入数字"
+                        {% if q.validation.get('must_be_integer') %}step="1"{% else %}step="any"{% endif %}
+                        oninput="evaluateJumps()">
+                </div>
+                {% if q.validation %}
+                <div class="validation-hint">
+                    {% if q.validation.get('must_be_integer') %}必须为整数{% endif %}
+                    {% if q.validation.get('min_value') is not none %}最小值 {{ q.validation.min_value }}{% endif %}
+                    {% if q.validation.get('max_value') is not none %}最大值 {{ q.validation.max_value }}{% endif %}
+                </div>
+                {% endif %}
+            {% endif %}
+
+            <div class="question-error" id="error-{{ q.id }}" style="display:none"></div>
+        </div>
+        {% endfor %}
+
+        <input type="hidden" name="visible_questions" id="visible-questions" value="">
+        <input type="hidden" name="completion_seconds" id="completion-seconds" value="0">
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary btn-large">提交问卷</button>
+        </div>
+    </form>
+</div>
+
+<script>
+let startTime = Date.now();
+
+const questionsData = [
+    {% for q in questions %}
+    {
+        id: '{{ q.id }}',
+        order: {{ q.order }},
+        type: '{{ q.type }}',
+        required: {{ 'true' if q.required else 'false' }},
+        options: {{ q.options|tojson }},
+        validation: {{ q.validation|tojson }},
+        jump_rules: {{ q.jump_rules|tojson }}
+    },
+    {% endfor %}
+];
+
+const orderMap = {};
+questionsData.forEach(q => { orderMap[q.id] = q.order; });
+
+function getAnswer(q) {
+    const qEl = document.getElementById('question-' + q.id);
+    if (!qEl) return null;
+
+    if (q.type === 'single_choice') {
+        const checked = qEl.querySelector('input[type="radio"]:checked');
+        return checked ? checked.value : '';
+    } else if (q.type === 'multiple_choice') {
+        const checked = qEl.querySelectorAll('input[type="checkbox"]:checked');
+        return Array.from(checked).map(cb => cb.value);
+    } else {
+        const input = qEl.querySelector('input');
+        return input ? input.value : '';
+    }
+}
+
+function evaluateCondition(answer, rule, question) {
+    const ct = rule.condition_type;
+    const cv = rule.condition_value;
+
+    if (question.type === 'single_choice') {
+        if (ct === 'equals') return answer === String(cv);
+    }
+
+    if (question.type === 'multiple_choice') {
+        if (!Array.isArray(answer)) answer = answer ? [answer] : [];
+        if (ct === 'contains') return answer.includes(String(cv));
+        if (ct === 'equals') {
+            const vals = String(cv).split(',').map(s => s.trim());
+            return vals.every(v => answer.includes(v)) && answer.length === vals.length;
+        }
+    }
+
+    if (question.type === 'number_fill' || question.type === 'text_fill') {
+        const num = parseFloat(answer);
+        if (ct === 'equals') return answer === String(cv);
+        if (ct === 'greater_than') return !isNaN(num) && num > Number(cv);
+        if (ct === 'less_than') return !isNaN(num) && num < Number(cv);
+        if (ct === 'between') {
+            if (Array.isArray(cv) && cv.length === 2) {
+                return !isNaN(num) && num >= cv[0] && num <= cv[1];
+            }
+        }
+        if (ct === 'contains') return String(answer).includes(String(cv));
+    }
+
+    return false;
+}
+
+function evaluateJumps() {
+    const allBlocks = document.querySelectorAll('.question-block');
+    allBlocks.forEach(b => { b.style.display = 'block'; });
+
+    questionsData.forEach(q => {
+        if (!q.jump_rules || q.jump_rules.length === 0) return;
+
+        const answer = getAnswer(q);
+        if (answer === '' || (Array.isArray(answer) && answer.length === 0)) return;
+
+        for (const rule of q.jump_rules) {
+            if (evaluateCondition(answer, rule, q)) {
+                const targetOrder = orderMap[rule.target_question_id];
+                if (targetOrder && targetOrder > q.order) {
+                    questionsData.forEach(other => {
+                        if (other.order > q.order && other.order < targetOrder) {
+                            const el = document.getElementById('question-' + other.id);
+                            if (el) el.style.display = 'none';
+                        }
+                    });
+                }
+                break;
+            }
+        }
+    });
+
+    updateVisibleQuestions();
+}
+
+function updateVisibleQuestions() {
+    const visible = [];
+    questionsData.forEach(q => {
+        const el = document.getElementById('question-' + q.id);
+        if (el && el.style.display !== 'none') {
+            visible.push(q.id);
+        }
+    });
+    document.getElementById('visible-questions').value = visible.join(',');
+}
+
+function validateForm() {
+    let valid = true;
+    updateVisibleQuestions();
+
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    document.getElementById('completion-seconds').value = elapsed;
+
+    const visibleIds = document.getElementById('visible-questions').value.split(',');
+
+    questionsData.forEach(q => {
+        const errEl = document.getElementById('error-' + q.id);
+        errEl.style.display = 'none';
+        errEl.textContent = '';
+
+        if (!visibleIds.includes(q.id)) return;
+
+        const answer = getAnswer(q);
+
+        if (q.required) {
+            if (q.type === 'single_choice' && !answer) {
+                errEl.textContent = '此题为必答题';
+                errEl.style.display = 'block';
+                valid = false;
+                return;
+            }
+            if (q.type === 'multiple_choice' && (!Array.isArray(answer) || answer.length === 0)) {
+                errEl.textContent = '此题为必答题';
+                errEl.style.display = 'block';
+                valid = false;
+                return;
+            }
+            if ((q.type === 'text_fill' || q.type === 'number_fill') && !answer) {
+                errEl.textContent = '此题为必答题';
+                errEl.style.display = 'block';
+                valid = false;
+                return;
+            }
+        }
+
+        if (q.type === 'multiple_choice' && Array.isArray(answer) && answer.length > 0) {
+            const minSel = q.validation.min_select;
+            const maxSel = q.validation.max_select;
+            if (minSel && answer.length < minSel) {
+                errEl.textContent = '至少选择 ' + minSel + ' 项';
+                errEl.style.display = 'block';
+                valid = false;
+                return;
+            }
+            if (maxSel && answer.length > maxSel) {
+                errEl.textContent = '最多选择 ' + maxSel + ' 项';
+                errEl.style.display = 'block';
+                valid = false;
+                return;
+            }
+        }
+
+        if (q.type === 'text_fill' && answer) {
+            const minLen = q.validation.min_length;
+            const maxLen = q.validation.max_length;
+            if (minLen && answer.length < minLen) {
+                errEl.textContent = '输入不能少于 ' + minLen + ' 个字符';
+                errEl.style.display = 'block';
+                valid = false;
+                return;
+            }
+            if (maxLen && answer.length > maxLen) {
+                errEl.textContent = '输入不能超过 ' + maxLen + ' 个字符';
+                errEl.style.display = 'block';
+                valid = false;
+                return;
+            }
+        }
+
+        if (q.type === 'number_fill' && answer) {
+            const num = parseFloat(answer);
+            if (isNaN(num)) {
+                errEl.textContent = '请输入有效的数字';
+                errEl.style.display = 'block';
+                valid = false;
+                return;
+            }
+            if (q.validation.must_be_integer && num !== Math.floor(num)) {
+                errEl.textContent = '必须输入整数';
+                errEl.style.display = 'block';
+                valid = false;
+                return;
+            }
+            if (q.validation.min_value !== null && q.validation.min_value !== undefined && num < q.validation.min_value) {
+                errEl.textContent = '数字不能小于 ' + q.validation.min_value;
+                errEl.style.display = 'block';
+                valid = false;
+                return;
+            }
+            if (q.validation.max_value !== null && q.validation.max_value !== undefined && num > q.validation.max_value) {
+                errEl.textContent = '数字不能大于 ' + q.validation.max_value;
+                errEl.style.display = 'block';
+                valid = false;
+                return;
+            }
+        }
+    });
+
+    if (!valid) {
+        const firstError = document.querySelector('.question-error[style*="block"]');
+        if (firstError) {
+            firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
+
+    return valid;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    evaluateJumps();
+});
+</script>
+{% endblock %}

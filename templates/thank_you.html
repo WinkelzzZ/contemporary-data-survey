@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}感谢参与{% endblock %}
+{% block content %}
+<div class="thank-you-page">
+    <div class="card" style="text-align:center; padding:60px 40px;">
+        <h2>感谢您的参与！</h2>
+        <p>您的回复已成功提交。</p>
+        {% if survey %}
+        <p class="survey-name">{{ survey.title }}</p>
+        {% endif %}
+        <a href="{{ url_for('auth.login') }}" class="btn btn-primary" style="margin-top:20px;">返回首页</a>
+    </div>
+</div>
+{% endblock %}
