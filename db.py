@@ -19,4 +19,8 @@ def init_db():
     db.surveys.create_index('survey_key', unique=True)
     db.surveys.create_index('creator_id')
     db.questions.create_index([('survey_id', 1), ('order', 1)], unique=True)
+    db.questions.create_index('survey_id')
     db.responses.create_index('survey_id')
+
+    db.question_templates.create_index('creator_id')
+    db.question_templates.create_index([('creator_id', 1), ('is_shared', 1)])

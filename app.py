@@ -13,11 +13,13 @@ def create_app():
     from survey import survey_bp
     from fill import fill_bp
     from stats import stats_bp
+    from question_library import question_library_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(survey_bp)
     app.register_blueprint(fill_bp)
     app.register_blueprint(stats_bp)
+    app.register_blueprint(question_library_bp)
 
     @app.route('/')
     def index():

@@ -297,6 +297,31 @@
         {% endif %}
     </div>
 
+    <!-- Add from Library -->
+    {% if available_templates %}
+    <div class="card">
+        <h3>从题目库添加</h3>
+        <form method="POST" action="{{ url_for('survey.add_question_from_library', survey_id=survey._id) }}">
+            <div class="form-group">
+                <label>选择题库中的题目</label>
+                <select name="template_id" required>
+                    <option value="">-- 请选择 --</option>
+                    {% for t in available_templates %}
+                    <option value="{{ t._id }}">
+                        {{ t.title }} ({{ t.type }}) - v{{ t.version }}
+                        {% if t.creator_id != session.user_id %}[分享]{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">从题库添加</button>
+                <a href="{{ url_for('question_library.library') }}" class="btn btn-sm">管理题库</a>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+
     <!-- Add Question Form -->
     <div class="card">
         <h3>添加题目</h3>

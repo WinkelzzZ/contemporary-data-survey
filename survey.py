@@ -101,11 +101,20 @@ def edit(survey_id):
 
     response_count = db.responses.count_documents({'survey_id': survey['_id']})
 
+    user_id = ObjectId(session['user_id'])
+    available_templates = list(db.question_templates.find({
+        '$or': [
+            {'creator_id': user_id},
+            {'shared_with': user_id}
+        ]
+    }).sort('updated_at', -1))
+
     return render_template('edit_survey.html',
                            survey=survey,
                            questions=questions,
                            all_questions=all_questions_for_jump,
-                           response_count=response_count)
+                           response_count=response_count,
+                           available_templates=available_templates)
 
 
 @survey_bp.route('/survey/<survey_id>/settings', methods=['POST'])
@@ -256,6 +265,54 @@ def add_question(survey_id):
     })
 
     flash('题目已添加', 'success')
+    return redirect(url_for('survey.edit', survey_id=survey_id))
+
+
+@survey_bp.route('/survey/<survey_id>/question/add-from-library', methods=['POST'])
+@login_required
+def add_question_from_library(survey_id):
+    db = get_db()
+    survey = db.surveys.find_one({'_id': ObjectId(survey_id)})
+
+    if not survey or str(survey['creator_id']) != session['user_id']:
+        flash('无权操作', 'error')
+        return redirect(url_for('survey.dashboard'))
+
+    template_id = request.form.get('template_id', '').strip()
+    if not template_id:
+        flash('请选择题目', 'error')
+        return redirect(url_for('survey.edit', survey_id=survey_id))
+
+    template = db.question_templates.find_one({'_id': ObjectId(template_id)})
+    if not template:
+        flash('题目不存在', 'error')
+        return redirect(url_for('survey.edit', survey_id=survey_id))
+
+    user_id = ObjectId(session['user_id'])
+    if template['creator_id'] != user_id and user_id not in template.get('shared_with', []):
+        flash('无权使用该题目', 'error')
+        return redirect(url_for('survey.edit', survey_id=survey_id))
+
+    max_order = db.questions.find_one(
+        {'survey_id': survey['_id']},
+        sort=[('order', -1)]
+    )
+    next_order = (max_order['order'] + 1) if max_order else 1
+
+    db.questions.insert_one({
+        'survey_id': survey['_id'],
+        'order': next_order,
+        'type': template['type'],
+        'title': template['title'],
+        'required': template['required'],
+        'options': template.get('options', []),
+        'validation': template.get('validation', {}),
+        'jump_rules': [],
+        'template_id': template['_id'],
+        'template_version': template['version']
+    })
+
+    flash('题目已从题库添加', 'success')
     return redirect(url_for('survey.edit', survey_id=survey_id))
 
 

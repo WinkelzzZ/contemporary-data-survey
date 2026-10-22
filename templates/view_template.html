@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}{{ template.title }} - 题目详情{% endblock %}
+{% block content %}
+<div class="template-detail">
+    <div class="page-header">
+        <h2>{{ template.title }}</h2>
+        <div class="header-actions">
+            {% if template.is_owner %}
+            <a href="{{ url_for('question_library.edit_template', template_id=template._id) }}" class="btn btn-primary">编辑</a>
+            <a href="{{ url_for('question_library.template_stats', template_id=template._id) }}" class="btn">查看统计</a>
+            {% endif %}
+            <a href="{{ url_for('question_library.library') }}" class="btn">返回题库</a>
+        </div>
+    </div>
+
+    <div class="template-info-card">
+        <div class="info-row">
+            <span class="label">题目类型：</span>
+            <span class="type-badge type-{{ template.type }}">
+                {% if template.type == 'single_choice' %}单选题
+                {% elif template.type == 'multiple_choice' %}多选题
+                {% elif template.type == 'text_fill' %}文本填空
+                {% elif template.type == 'number_fill' %}数字填空
+                {% endif %}
+            </span>
+        </div>
+        <div class="info-row">
+            <span class="label">当前版本：</span>
+            <span>v{{ template.version }}</span>
+        </div>
+        <div class="info-row">
+            <span class="label">创建者：</span>
+            <span>{{ template.creator.username }}</span>
+        </div>
+        <div class="info-row">
+            <span class="label">是否必填：</span>
+            <span>{{ '是' if template.required else '否' }}</span>
+        </div>
+        <div class="info-row">
+            <span class="label">创建时间：</span>
+            <span>{{ template.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+        </div>
+        <div class="info-row">
+            <span class="label">更新时间：</span>
+            <span>{{ template.updated_at.strftime('%Y-%m-%d %H:%M') }}</span>
+        </div>
+
+        {% if template.options %}
+        <div class="info-row">
+            <span class="label">选项：</span>
+            <ul class="option-list">
+                {% for opt in template.options %}
+                <li>{{ opt }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if template.validation %}
+        <div class="info-row">
+            <span class="label">校验规则：</span>
+            <div class="validation-rules">
+                {% if template.validation.min_select is defined %}
+                <span>最少选择：{{ template.validation.min_select }}</span>
+                {% endif %}
+                {% if template.validation.max_select is defined %}
+                <span>最多选择：{{ template.validation.max_select }}</span>
+                {% endif %}
+                {% if template.validation.min_length is defined %}
+                <span>最少字数：{{ template.validation.min_length }}</span>
+                {% endif %}
+                {% if template.validation.max_length is defined %}
+                <span>最多字数：{{ template.validation.max_length }}</span>
+                {% endif %}
+                {% if template.validation.min_value is defined %}
+                <span>最小值：{{ template.validation.min_value }}</span>
+                {% endif %}
+                {% if template.validation.max_value is defined %}
+                <span>最大值：{{ template.validation.max_value }}</span>
+                {% endif %}
+                {% if template.validation.must_be_integer %}
+                <span>必须为整数</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if template.is_owner %}
+    <div class="share-section">
+        <h3>分享设置</h3>
+        <form method="POST" action="{{ url_for('question_library.share_template', template_id=template._id) }}" class="share-form">
+            <input type="text" name="username" placeholder="输入用户名" required>
+            <button type="submit" class="btn btn-sm">分享</button>
+        </form>
+
+        {% if template.shared_with %}
+        <div class="shared-users">
+            <h4>已分享给：</h4>
+            {% for user_id in template.shared_with %}
+            {% set user = template.shared_with_users[user_id] if template.shared_with_users is defined else None %}
+            <div class="shared-user-item">
+                <span>{{ user_id }}</span>
+                <form method="POST" action="{{ url_for('question_library.unshare_template', template_id=template._id) }}" style="display:inline">
+                    <input type="hidden" name="user_id" value="{{ user_id }}">
+                    <button type="submit" class="btn btn-sm btn-danger">取消分享</button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="version-history-section">
+        <h3>版本历史</h3>
+        {% if version_history|length > 1 %}
+        <div class="version-timeline">
+            {% for v in version_history %}
+            <div class="version-item {% if v._id == template._id %}current{% endif %}">
+                <div class="version-marker">v{{ v.version }}</div>
+                <div class="version-info">
+                    <div class="version-title">{{ v.title }}</div>
+                    <div class="version-meta">
+                        <span>{{ v.creator.username }}</span>
+                        <span>{{ v.updated_at.strftime('%Y-%m-%d %H:%M') }}</span>
+                    </div>
+                    {% if v._id != template._id %}
+                    <a href="{{ url_for('question_library.view_template', template_id=v._id) }}" class="btn btn-sm">查看此版本</a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="no-versions">暂无其他版本</p>
+        {% endif %}
+    </div>
+
+    <div class="usage-section">
+        <h3>使用情况</h3>
+        {% if surveys_using %}
+        <p>该题目被 {{ surveys_using|length }} 个问卷使用：</p>
+        <div class="survey-usage-list">
+            {% for item in surveys_using %}
+            <div class="survey-usage-item">
+                <a href="{{ url_for('survey.edit', survey_id=item.survey._id) }}">
+                    {{ item.survey.title }}
+                </a>
+                <span class="status-badge status-{{ item.survey.status }}">
+                    {% if item.survey.status == 'draft' %}草稿
+                    {% elif item.survey.status == 'published' %}已发布
+                    {% elif item.survey.status == 'closed' %}已关闭
+                    {% endif %}
+                </span>
+                <span class="question-order">第 {{ item.question_order }} 题</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="no-usage">该题目尚未被任何问卷使用</p>
+        {% endif %}
+    </div>
+
+    {% if template.is_owner %}
+    <div class="danger-zone">
+        <h3>危险操作</h3>
+        <form method="POST" action="{{ url_for('question_library.delete_template', template_id=template._id) }}"
+              onsubmit="return confirm('确定要删除这个题目吗？此操作不可恢复。')">
+            <button type="submit" class="btn btn-danger">删除题目</button>
+        </form>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

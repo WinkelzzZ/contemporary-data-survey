@@ -13,6 +13,7 @@
             {% if session.user_id %}
                 <span class="nav-user">{{ session.username }}</span>
                 <a href="{{ url_for('survey.dashboard') }}">我的问卷</a>
+                <a href="{{ url_for('question_library.library') }}">题目库</a>
                 <a href="{{ url_for('auth.logout') }}">退出</a>
             {% else %}
                 <a href="{{ url_for('auth.login') }}">登录</a>

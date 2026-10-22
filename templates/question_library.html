@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}题目库 - 问卷系统{% endblock %}
+{% block content %}
+<div class="question-library">
+    <div class="page-header">
+        <h2>我的题目库</h2>
+        <button onclick="document.getElementById('create-template-modal').style.display='flex'" class="btn btn-primary">创建题目</button>
+    </div>
+
+    {% if templates %}
+        <div class="template-list">
+            {% for t in templates %}
+            <div class="template-card">
+                <div class="template-card-header">
+                    <h3>{{ t.title }}</h3>
+                    <span class="type-badge type-{{ t.type }}">
+                        {% if t.type == 'single_choice' %}单选
+                        {% elif t.type == 'multiple_choice' %}多选
+                        {% elif t.type == 'text_fill' %}填空
+                        {% elif t.type == 'number_fill' %}数字
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="template-meta">
+                    <span>版本：v{{ t.version }}</span>
+                    <span>使用：{{ t.usage_count }} 次</span>
+                    <span>创建者：{{ t.creator.username }}</span>
+                    {% if t.is_shared and t.is_owner %}
+                    <span class="shared-badge">已分享</span>
+                    {% elif not t.is_owner %}
+                    <span class="shared-from-badge">来自分享</span>
+                    {% endif %}
+                </div>
+                <div class="template-actions">
+                    <a href="{{ url_for('question_library.view_template', template_id=t._id) }}" class="btn btn-sm">查看</a>
+                    {% if t.is_owner %}
+                    <a href="{{ url_for('question_library.edit_template', template_id=t._id) }}" class="btn btn-sm">编辑</a>
+                    <a href="{{ url_for('question_library.template_stats', template_id=t._id) }}" class="btn btn-sm">统计</a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <p>题目库还是空的</p>
+            <p>创建题目后可以在多个问卷中重复使用</p>
+        </div>
+    {% endif %}
+</div>
+
+<div id="create-template-modal" class="modal" style="display:none">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>创建题目</h3>
+            <span onclick="document.getElementById('create-template-modal').style.display='none'" class="close">&times;</span>
+        </div>
+        <form method="POST" action="{{ url_for('question_library.create_template') }}">
+            <div class="form-group">
+                <label>题目标题</label>
+                <input type="text" name="title" required placeholder="例如：你的年龄">
+            </div>
+            <div class="form-group">
+                <label>题目类型</label>
+                <select name="type" id="template-type" onchange="toggleTemplateOptions()">
+                    <option value="single_choice">单选题</option>
+                    <option value="multiple_choice">多选题</option>
+                    <option value="text_fill">文本填空</option>
+                    <option value="number_fill">数字填空</option>
+                </select>
+            </div>
+            <div class="form-group" id="options-group">
+                <label>选项</label>
+                <div id="options-container">
+                    <input type="text" name="options[]" placeholder="选项1">
+                    <input type="text" name="options[]" placeholder="选项2">
+                </div>
+                <button type="button" onclick="addTemplateOption()" class="btn btn-sm">+ 添加选项</button>
+            </div>
+            <div class="form-group" id="validation-group" style="display:none">
+                <label>校验规则</label>
+                <div id="validation-container"></div>
+            </div>
+            <div class="form-group">
+                <label><input type="checkbox" name="required"> 必填</label>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">创建</button>
+                <button type="button" onclick="document.getElementById('create-template-modal').style.display='none'" class="btn">取消</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function toggleTemplateOptions() {
+    const type = document.getElementById('template-type').value;
+    const optionsGroup = document.getElementById('options-group');
+    const validationGroup = document.getElementById('validation-group');
+
+    if (type === 'single_choice' || type === 'multiple_choice') {
+        optionsGroup.style.display = 'block';
+        validationGroup.style.display = type === 'multiple_choice' ? 'block' : 'none';
+        if (type === 'multiple_choice') {
+            document.getElementById('validation-container').innerHTML = `
+                <div class="validation-row">
+                    <label>最少选择：</label>
+                    <input type="number" name="min_select" min="0" placeholder="不限">
+                </div>
+                <div class="validation-row">
+                    <label>最多选择：</label>
+                    <input type="number" name="max_select" min="0" placeholder="不限">
+                </div>
+            `;
+        }
+    } else {
+        optionsGroup.style.display = 'none';
+        validationGroup.style.display = 'block';
+        if (type === 'text_fill') {
+            document.getElementById('validation-container').innerHTML = `
+                <div class="validation-row">
+                    <label>最少字数：</label>
+                    <input type="number" name="min_length" min="0" placeholder="不限">
+                </div>
+                <div class="validation-row">
+                    <label>最多字数：</label>
+                    <input type="number" name="max_length" min="0" placeholder="不限">
+                </div>
+            `;
+        } else if (type === 'number_fill') {
+            document.getElementById('validation-container').innerHTML = `
+                <div class="validation-row">
+                    <label>最小值：</label>
+                    <input type="number" name="min_value" step="any" placeholder="不限">
+                </div>
+                <div class="validation-row">
+                    <label>最大值：</label>
+                    <input type="number" name="max_value" step="any" placeholder="不限">
+                </div>
+                <div class="validation-row">
+                    <label><input type="checkbox" name="must_be_integer"> 必须为整数</label>
+                </div>
+            `;
+        }
+    }
+}
+
+function addTemplateOption() {
+    const container = document.getElementById('options-container');
+    const count = container.children.length + 1;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.name = 'options[]';
+    input.placeholder = '选项' + count;
+    container.appendChild(input);
+}
+
+toggleTemplateOptions();
+</script>
+{% endblock %}
