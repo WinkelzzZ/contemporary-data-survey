@@ -369,10 +369,10 @@ python test_api.py
 
 #### 1. 数据库 Schema 结构生成
 
-**工具**：Claude
+**工具**：千问
 
 **Prompt**：
-> 请帮我生成 MongoDB 问卷系统的集合 JSON 结构示例，需要支持用户、问卷、四种题型（单选/多选/文本填空/数字填空）、跳转规则、校验规则。
+> 生成mongodb问卷系统的集合json结构示例,要支持用户、问卷、四种题型（单选/多选/文本填空/数字填空）,跳转规则,校验规则
 
 **AI 返回**：四个集合（users、surveys、questions、responses）的 JSON 结构骨架。
 
@@ -383,10 +383,10 @@ python test_api.py
 
 #### 2. 跳转逻辑 JavaScript 代码
 
-**工具**：Claude
+**工具**：千问
 
 **Prompt**：
-> 请帮我写前端 JavaScript，实现根据跳转规则动态显示/隐藏问卷题目。跳转规则存储在题目的 jump_rules 数组中。
+> 写前端JavaScript,实现根据跳转规则动态显示/隐藏问卷题目。跳转规则存储在题目的jump_rules数组中
 
 **AI 返回**：`evaluateJumps()` 和 `evaluateCondition()` 函数的基本实现。
 
@@ -396,10 +396,10 @@ python test_api.py
 
 #### 3. 统计功能 Python 代码
 
-**工具**：Claude
+**工具**：千问
 
 **Prompt**：
-> 请帮我写一个 Python 函数，根据题目类型分别统计单选题选项计数、多选题选项计数、文本回复列表、数字统计（均值/最值）。
+> 写一个python函数，根据题目类型分别统计单选题选项计数、多选题选项计数、文本回复列表、数字统计（均值和最值)
 
 **AI 返回**：`_compute_question_stats()` 函数的基本实现。
 
@@ -412,7 +412,7 @@ python test_api.py
 **工具**：Claude
 
 **Prompt**：
-> 请帮我设计问卷系统的 CSS 样式，要求简洁现代。
+> 给问卷系统设计一个简洁的CSS样式
 
 **AI 返回**：约 300 行 CSS 代码。
 
@@ -422,7 +422,7 @@ python test_api.py
 
 #### 5. 内网穿透尝试
 
-尝试使用 ngrok 进行内网穿透以实现公网访问，完成了 authtoken 配置和隧道建立，但因配置问题最终放弃该方案。
+尝试使用 ngrok 进行内网穿透以实现公网访问，完成了 authtoken 配置和隧道建立，但因配置过于麻烦最终放弃该方案。
 
 ### 8.2 AI 使用说明
 
